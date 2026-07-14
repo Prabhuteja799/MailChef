@@ -1,0 +1,22 @@
+[
+  {
+    "name": "interview",
+    "description": "Interview invitations, scheduling links, confirmations, reschedules, or follow-ups tied to a specific job interview."
+  },
+  {
+    "name": "recruiter",
+    "description": "Outreach from recruiters, hiring managers, or staffing agencies about a potential role, before an interview is scheduled."
+  },
+  {
+    "name": "update",
+    "description": "Notifications, receipts, shipping/order updates, account or service updates, statements, or alerts from companies and platforms."
+  },
+  {
+    "name": "personal",
+    "description": "Personal correspondence from a person you know (friends, family, landlord, doctor, etc.), not an automated or business notification."
+  },
+  {
+    "name": "promotion",
+    "description": "Marketing emails, promotional offers, newsletters, or other low-priority noise not requiring a response."
+  }
+]
