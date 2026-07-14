@@ -2,7 +2,8 @@
 
 Full setup, stage by stage: Google OAuth, running the backend locally,
 verifying each capability with curl, deploying to Fly.io, then installing
-the CLI you'll actually use day to day (§10).
+the [CLI](#12-install-the-cli) and [web UI](#13-web-ui) you'll actually use
+day to day.
 
 ## 1. Google Cloud: OAuth client + Gmail API
 
@@ -177,18 +178,44 @@ entries with dates — each referencing the source email id. If there's no
 unread mail, it skips the LLM call entirely rather than paying for an empty
 summary.
 
-## 6. Deploy to Fly.io (do this once you're happy with stage (a) locally)
+## 10. Job application tracker
+
+Extracts interview invites, replies, and rejections from your job-search
+mail (`interview`/`recruiter`/`update` categories only) and matches each one
+to a per-company application with a status derived from the most recent
+event.
+
+```bash
+# scans mail scoped to the last N days; omit since_days to scan everything pending
+curl -s -X POST "http://localhost:8080/jobs/extract?since_days=14" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+curl -s http://localhost:8080/jobs -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s http://localhost:8080/jobs/<application-id> -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+Company matching is best-effort (the extraction prompt asks for the parent
+brand name specifically, e.g. "Citi" not "Citi Scaled Technical Hiring NAM")
+— not exact entity resolution, so the same company can occasionally split
+across two entries under different extracted names. Interview/moving-forward/
+offer events are itemized individually wherever they're surfaced (digest,
+CLI, web); rejections are only counted, since an active search can produce
+dozens per week and itemizing them would bury the signal that actually
+matters. This is wired into the scheduled digest pipeline too (`/digest/run`
+scopes it the same way as classify/index, via `since_days`/`INITIAL_SYNC_DAYS`).
+
+## 11. Deploy to Fly.io
 
 ```bash
 brew install flyctl   # or see https://fly.io/docs/hands-on/install-flyctl/
-fly auth login
+flyctl auth login     # opens a browser
 
-cd backend
-fly launch --no-deploy   # creates the app, keep the generated name in sync with fly.toml
-fly volumes create mailchef_data --size 1   # persistent volume for SQLite + Chroma
+cd ..   # run from the repo root — the build needs both backend/ and web/
+flyctl apps create mailchef-backend   # pick your own globally-unique name if this is taken
+flyctl volumes create mailchef_data --region iad --size 1 -a mailchef-backend --yes
 
-# Push every value from your local .env as a Fly secret (never commit .env):
-fly secrets set \
+# Push every value from your local backend/.env as a Fly secret (never commit .env):
+flyctl secrets set -a mailchef-backend \
   GOOGLE_CLIENT_ID=... \
   GOOGLE_CLIENT_SECRET=... \
   GOOGLE_OAUTH_REDIRECT_URI=https://<your-app>.fly.dev/auth/gmail/callback \
@@ -196,20 +223,46 @@ fly secrets set \
   MAILCHEF_API_TOKEN=... \
   OPENAI_API_KEY=...
 
-fly deploy
+flyctl deploy -a mailchef-backend --config backend/fly.toml --dockerfile backend/Dockerfile
 ```
 
-Then repeat step 4 against `https://<your-app>.fly.dev` instead of
-`localhost:8080` to connect Gmail on the deployed instance.
+**Run this from the repo root, not from `backend/`.** `fly.toml`'s
+`[build] context = ".."` is meant to make the build context the repo root
+(so the Dockerfile's frontend stage can reach `web/`), but in practice
+`flyctl deploy`'s context resolution follows your current directory, not the
+`context` field, when invoked as a plain `fly deploy` from inside `backend/`
+— it'll silently build with `backend/` as context instead, and fail with
+`COPY web/ ./: "/web": not found` (or copy your local `backend/.venv` and
+`backend/data/`, including your real synced mailbox database, into the
+build upload). Always pass `--config backend/fly.toml --dockerfile
+backend/Dockerfile` explicitly from the repo root, which is also why
+`.dockerignore` exists at the repo root — it excludes `backend/.venv`,
+`backend/data/`, `cli/`, and `docs/` from the build context regardless.
+
+Before connecting Gmail on the deployed instance, add
+`https://<your-app>.fly.dev/auth/gmail/callback` to your OAuth client's
+Authorized redirect URIs in Google Cloud Console (keep the localhost one
+too). Then repeat step 4 against `https://<your-app>.fly.dev` instead of
+`localhost:8080` — **this is a separate, empty database from your local
+one**; Gmail needs to be connected there independently.
+
+If `https://<your-app>.fly.dev` doesn't resolve right after deploying, that's
+normal DNS propagation (a minute or two, occasionally longer depending on
+your resolver) — the app itself is up as soon as `flyctl deploy` finishes;
+`flyctl status -a <your-app>` shows `started` once the machine is healthy.
 
 Notes on this deployment shape:
-- `fly.toml` sets `min_machines_running = 1` so the process (and later, its
+- `fly.toml` sets `min_machines_running = 1` so the process (and its
   in-process digest scheduler) keeps running even with no incoming requests —
   this costs a small always-on fee instead of Fly's scale-to-zero free tier.
-- The Fly volume persists `backend/data/`: the SQLite DB (messages, sync
-  state, encrypted OAuth token) and the Chroma vector store (added in stage b).
+- The Fly volume persists `/data`: the SQLite DB (messages, sync state,
+  encrypted OAuth token, digest history, tracked job applications) and the
+  Chroma vector store.
+- Schema changes (new model fields) auto-migrate additively on startup
+  (`backend/app/db/database.py`) — safe to redeploy after pulling model
+  changes without manually altering the Fly volume's database.
 
-## 10. Install the CLI
+## 12. Install the CLI
 
 This is what you actually run day to day, once the backend (local or
 deployed) is up.
@@ -231,18 +284,21 @@ mailchef ask "Any interview schedules this week?"
 mailchef search "landlord" --unread
 mailchef digest                      # latest digest
 mailchef digest --now                # regenerate now ("give me my summary now")
+mailchef jobs extract                # scan mail for interview/reply/rejection events
+mailchef jobs                        # list tracked applications
+mailchef jobs show <application-id>  # full email timeline for one application
 mailchef mark-read <message-id>      # safe single action, runs immediately
 mailchef archive --search "promotional emails" --category promotion
   # -> shows every matching email and asks y/n before touching Gmail
 mailchef chat                        # interactive: plain text asks a question,
-                                      # /digest /search /archive /trash /mark-read /star /sync run actions
+                                      # /digest /search /jobs /archive /trash /mark-read /star /sync run actions
 ```
 
 `mailchef --help` lists every command; each subcommand supports `--help` too.
 Every archive/trash/bulk action prints the full affected-email list and
 requires an explicit "y" — nothing destructive ever runs silently.
 
-## 11. Web UI
+## 13. Web UI
 
 The web UI is a React SPA served directly by the backend — no separate
 server, no CORS setup, one URL.
@@ -268,12 +324,19 @@ cd ../backend && uvicorn app.main:app --port 8080
 
 Then open `http://localhost:8080` and paste your `MAILCHEF_API_TOKEN` — same
 token the CLI uses, stored in the browser's localStorage, sent as a bearer
-header on every request. Three views: **Ask** (natural-language Q&A),
-**Digest** (latest/generate now), **Search & Inbox** (hybrid search +
-actions — archive/trash/bulk always show the affected emails and require
-an explicit confirm click before touching Gmail, same guarantee as the CLI).
+header on every request. Four tabs:
+- **Ask** — natural-language Q&A, with persistent chat history (localStorage)
+- **Digest** — latest/generate now, rendered as real components (stat tiles,
+  color-coded job highlights) rather than a markdown blob
+- **Jobs** — the job tracker: a "needs your attention" section for
+  interview/moving-forward/offer, and a filterable/searchable table for
+  everything else
+- **Search & Inbox** — hybrid search, or leave the query empty to just
+  browse recent mail like Gmail; archive/trash/bulk actions always show the
+  affected emails and require an explicit confirm click before touching
+  Gmail, same guarantee as the CLI
 
 `backend/Dockerfile` builds the frontend in a separate stage and copies the
-static output into the image, so a Fly.io deploy (`fly deploy` from
-`backend/`, per step 6) ships the web UI automatically — verified with a
-real `docker build` + `docker run` of the multi-stage image.
+static output into the image, so a Fly.io deploy (per step 11) ships the web
+UI automatically — verified with a real `docker build` + `docker run` of the
+multi-stage image, and with a real deploy to Fly.io.

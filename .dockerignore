@@ -1,0 +1,11 @@
+.git/
+backend/.venv/
+backend/data/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.egg-info/
+cli/
+docs/
+web/node_modules/
+web/dist/
+*.md
