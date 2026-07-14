@@ -20,11 +20,48 @@ export interface QueryResponse {
   sources: QuerySource[];
 }
 
+export interface CategorySummary {
+  category: string;
+  summary: string;
+}
+
+export interface ActionItem {
+  summary: string;
+  source_email_id: string;
+}
+
+export interface InterviewScheduleItem {
+  summary: string;
+  when: string;
+  source_email_id: string;
+}
+
+export interface JobHighlightEntry {
+  id: string;
+  company: string;
+  role: string | null;
+  status_updated_at: string;
+}
+
+export interface JobHighlights {
+  interview: JobHighlightEntry[];
+  moving_forward: JobHighlightEntry[];
+  offer: JobHighlightEntry[];
+  rejected_count: number;
+}
+
 export interface DigestResponse {
   id: string;
   generated_at: string;
   unread_count: number;
   content_markdown: string;
+  // Absent on digests generated before structured output existed — the UI
+  // falls back to rendering content_markdown for those.
+  category_counts?: Record<string, number>;
+  category_summaries?: CategorySummary[];
+  action_items?: ActionItem[];
+  interview_schedule?: InterviewScheduleItem[];
+  job_highlights?: JobHighlights;
 }
 
 export interface Category {

@@ -6,8 +6,7 @@ from sqlmodel import Session
 
 from app.classification.classifier import classify_pending_messages
 from app.config import settings
-from app.db.models import Digest
-from app.digest.generator import generate_digest
+from app.digest.generator import digest_to_dict, generate_digest
 from app.gmail.client import GmailClient
 from app.gmail.sync import run_sync
 from app.jobs.extractor import extract_job_events
@@ -48,14 +47,5 @@ def run_full_pipeline(
         "classify": classify_result,
         "index": index_result,
         "jobs": jobs_result,
-        "digest": _digest_summary(digest),
-    }
-
-
-def _digest_summary(digest: Digest) -> dict:
-    return {
-        "id": digest.id,
-        "generated_at": digest.generated_at.isoformat(),
-        "unread_count": digest.unread_count,
-        "content_markdown": digest.content_markdown,
+        "digest": digest_to_dict(digest),
     }

@@ -66,6 +66,11 @@ class Digest(SQLModel, table=True):
     content_markdown: str
     unread_count: int
     category_counts_json: str = "{}"
+    # Structured version of the same content (interview_schedule, action_items,
+    # category_summaries, job_highlights) so the web UI can render proper
+    # components instead of parsing markdown — content_markdown stays the
+    # source of truth for the CLI's terminal rendering.
+    structured_json: str = "{}"
 
 
 class JobApplication(SQLModel, table=True):

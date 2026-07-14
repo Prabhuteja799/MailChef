@@ -30,6 +30,7 @@ from app.classification.categories import load_categories
 from app.classification.classifier import classify_pending_messages
 from app.db.database import create_db_and_tables, engine, get_session
 from app.db.models import Digest, JobApplication, JobApplicationEvent, Message
+from app.digest.generator import digest_to_dict
 from app.digest.pipeline import run_full_pipeline
 from app.digest.scheduler import start_scheduler, stop_scheduler
 from app.gmail.client import GmailClient
@@ -343,16 +344,7 @@ def digest_latest(session: Session = Depends(get_session)) -> dict:
     digest = session.exec(select(Digest).order_by(Digest.generated_at.desc())).first()
     if digest is None:
         raise HTTPException(404, "No digest has been generated yet — try POST /digest/run")
-    return _digest_response(digest)
-
-
-def _digest_response(d: Digest) -> dict:
-    return {
-        "id": d.id,
-        "generated_at": d.generated_at.isoformat(),
-        "unread_count": d.unread_count,
-        "content_markdown": d.content_markdown,
-    }
+    return digest_to_dict(digest)
 
 
 # --- Job application tracker ---

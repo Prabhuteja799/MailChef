@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from app.classification.categories import UNCATEGORIZED
 from app.config import settings
 from app.db.models import Digest, Message
-from app.jobs.summary import render_job_pipeline_section
+from app.jobs.summary import get_job_highlights, render_job_pipeline_markdown
 from app.llm import INJECTION_GUARD
 
 MAX_EMAILS_PER_CATEGORY = 15
@@ -60,6 +60,8 @@ _SCHEMA = {
     "additionalProperties": False,
 }
 
+_EMPTY_LLM_SECTIONS = {"category_summaries": [], "action_items": [], "interview_schedule": []}
+
 
 def generate_digest(session: Session, client: OpenAI) -> Digest:
     unread = session.exec(
@@ -69,11 +71,12 @@ def generate_digest(session: Session, client: OpenAI) -> Digest:
     # A DB query, not an LLM call — cheap enough to always include, and
     # meaningful even on an empty inbox (rejections/interviews don't
     # require the email to still be unread).
-    job_section = render_job_pipeline_section(session)
+    job_highlights = get_job_highlights(session)
+    job_markdown = render_job_pipeline_markdown(job_highlights)
 
     if not unread:
-        markdown = "# MailChef Morning Digest\n\nNo unread mail — inbox zero." + job_section
-        return _save_digest(session, markdown, 0, {})
+        markdown = "# MailChef Morning Digest\n\nNo unread mail — inbox zero." + job_markdown
+        return _save_digest(session, markdown, 0, {}, _EMPTY_LLM_SECTIONS, job_highlights)
 
     grouped: dict[str, list[Message]] = defaultdict(list)
     for m in unread:
@@ -81,8 +84,8 @@ def generate_digest(session: Session, client: OpenAI) -> Digest:
     category_counts = {cat: len(msgs) for cat, msgs in grouped.items()}
 
     parsed = _summarize_with_llm(client, grouped)
-    markdown = _render_markdown(len(unread), category_counts, parsed) + job_section
-    return _save_digest(session, markdown, len(unread), category_counts)
+    markdown = _render_markdown(len(unread), category_counts, parsed) + job_markdown
+    return _save_digest(session, markdown, len(unread), category_counts, parsed, job_highlights)
 
 
 def _summarize_with_llm(client: OpenAI, grouped: dict[str, list[Message]]) -> dict:
@@ -147,15 +150,47 @@ def _render_markdown(unread_total: int, category_counts: dict[str, int], parsed:
     return "\n".join(lines)
 
 
-def _save_digest(session: Session, markdown: str, unread_count: int, category_counts: dict[str, int]) -> Digest:
+def _save_digest(
+    session: Session,
+    markdown: str,
+    unread_count: int,
+    category_counts: dict[str, int],
+    llm_sections: dict,
+    job_highlights: dict,
+) -> Digest:
+    structured = {
+        "unread_count": unread_count,
+        "category_counts": category_counts,
+        **llm_sections,
+        "job_highlights": job_highlights,
+    }
     digest = Digest(
         id=uuid.uuid4().hex,
         generated_at=datetime.now(timezone.utc),
         content_markdown=markdown,
         unread_count=unread_count,
         category_counts_json=json.dumps(category_counts),
+        structured_json=json.dumps(structured),
     )
     session.add(digest)
     session.commit()
     session.refresh(digest)
     return digest
+
+
+def digest_to_dict(digest: Digest) -> dict:
+    """Shared by /digest/latest and /digest/run so both return the same
+    shape — structured_json holds everything the web UI renders as
+    components; content_markdown is kept for the CLI's terminal rendering.
+    """
+    try:
+        structured = json.loads(digest.structured_json)
+    except json.JSONDecodeError:
+        structured = {}
+    return {
+        "id": digest.id,
+        "generated_at": digest.generated_at.isoformat(),
+        "unread_count": digest.unread_count,
+        "content_markdown": digest.content_markdown,
+        **structured,
+    }
