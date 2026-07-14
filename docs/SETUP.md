@@ -241,3 +241,39 @@ mailchef chat                        # interactive: plain text asks a question,
 `mailchef --help` lists every command; each subcommand supports `--help` too.
 Every archive/trash/bulk action prints the full affected-email list and
 requires an explicit "y" — nothing destructive ever runs silently.
+
+## 11. Web UI
+
+The web UI is a React SPA served directly by the backend — no separate
+server, no CORS setup, one URL.
+
+**Local development** (hot reload, talks to a backend running on `:8080`):
+
+```bash
+cd web
+npm install
+npm run dev   # opens on :5173; paste http://localhost:8080 as the backend URL when it asks
+```
+
+**Production build**, served by the backend itself:
+
+```bash
+cd web
+npm install
+npm run build   # outputs web/dist
+
+# restart the backend — app/main.py auto-mounts web/dist at / if it exists
+cd ../backend && uvicorn app.main:app --port 8080
+```
+
+Then open `http://localhost:8080` and paste your `MAILCHEF_API_TOKEN` — same
+token the CLI uses, stored in the browser's localStorage, sent as a bearer
+header on every request. Three views: **Ask** (natural-language Q&A),
+**Digest** (latest/generate now), **Search & Inbox** (hybrid search +
+actions — archive/trash/bulk always show the affected emails and require
+an explicit confirm click before touching Gmail, same guarantee as the CLI).
+
+`backend/Dockerfile` builds the frontend in a separate stage and copies the
+static output into the image, so a Fly.io deploy (`fly deploy` from
+`backend/`, per step 6) ships the web UI automatically — verified with a
+real `docker build` + `docker run` of the multi-stage image.
