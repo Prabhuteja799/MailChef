@@ -1,18 +1,22 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { type ChatTurn, clearChatHistory, loadChatHistory, saveChatHistory } from "../api/chatHistory";
 import { ApiError, api } from "../api/client";
-import type { QuerySource } from "../api/types";
-
-interface ChatTurn {
-  question: string;
-  answer?: string;
-  sources?: QuerySource[];
-  error?: string;
-}
 
 export function Chat() {
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [turns, setTurns] = useState<ChatTurn[]>(() => loadChatHistory());
   const [input, setInput] = useState("");
   const [asking, setAsking] = useState(false);
+
+  // Persists across tab switches (component unmount/remount) and page
+  // reloads — otherwise every switch back to this tab lost the conversation.
+  useEffect(() => {
+    saveChatHistory(turns);
+  }, [turns]);
+
+  function clearHistory() {
+    setTurns([]);
+    clearChatHistory();
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -38,6 +42,14 @@ export function Chat() {
 
   return (
     <div className="chat-view">
+      {turns.length > 0 && (
+        <div className="chat-toolbar">
+          <button className="link-btn" onClick={clearHistory}>
+            Clear conversation
+          </button>
+        </div>
+      )}
+
       <div className="chat-log">
         {turns.length === 0 && (
           <div className="empty-state">
