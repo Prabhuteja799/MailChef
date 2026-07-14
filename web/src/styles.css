@@ -267,6 +267,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  padding-top: 8px;
   padding-bottom: 16px;
 }
 
@@ -282,13 +283,13 @@ select {
   font-size: 14px;
   line-height: 1.5;
   max-width: 85%;
-  white-space: pre-wrap;
 }
 
 .bubble-user {
   align-self: flex-end;
   background: var(--accent);
   color: white;
+  white-space: pre-wrap;
 }
 
 .bubble-assistant {
@@ -306,11 +307,43 @@ select {
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
   border: 1px solid var(--danger);
+  white-space: pre-wrap;
+}
+
+/* Rendered markdown inside an assistant bubble — kill the default block
+   margins so it doesn't look like it has extra blank lines baked in, since
+   the bubble padding already provides breathing room. */
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.6em 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.3em;
+}
+
+.markdown-body li {
+  margin: 0.25em 0;
+}
+
+.markdown-body strong {
+  font-weight: 700;
 }
 
 .sources {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 

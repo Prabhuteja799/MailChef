@@ -1,16 +1,27 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { type ChatTurn, clearChatHistory, loadChatHistory, saveChatHistory } from "../api/chatHistory";
 import { ApiError, api } from "../api/client";
+import type { QuerySource } from "../api/types";
+import { renderMarkdown } from "../util/markdown";
+
+const SOURCES_PREVIEW_COUNT = 4;
 
 export function Chat() {
   const [turns, setTurns] = useState<ChatTurn[]>(() => loadChatHistory());
   const [input, setInput] = useState("");
   const [asking, setAsking] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   // Persists across tab switches (component unmount/remount) and page
   // reloads — otherwise every switch back to this tab lost the conversation.
   useEffect(() => {
     saveChatHistory(turns);
+  }, [turns]);
+
+  // Without this, a long answer leaves the view scrolled near the top, with
+  // the just-asked question bubble awkwardly cramped against the toolbar.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns]);
 
   function clearHistory() {
@@ -60,21 +71,18 @@ export function Chat() {
         {turns.map((turn, i) => (
           <div className="chat-turn" key={i}>
             <div className="bubble bubble-user">{turn.question}</div>
-            {turn.answer && <div className="bubble bubble-assistant">{turn.answer}</div>}
+            {turn.answer && (
+              <div
+                className="bubble bubble-assistant markdown-body"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.answer) }}
+              />
+            )}
             {turn.error && <div className="bubble bubble-error">{turn.error}</div>}
             {!turn.answer && !turn.error && <div className="bubble bubble-assistant thinking">Thinking…</div>}
-            {turn.sources && turn.sources.length > 0 && (
-              <div className="sources">
-                {turn.sources.map((s) => (
-                  <div className="source-chip" key={s.id} title={s.subject}>
-                    <span className="source-from">{s.from}</span>
-                    <span className="source-subject">{s.subject}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {turn.sources && turn.sources.length > 0 && <Sources sources={turn.sources} />}
           </div>
         ))}
+        <div ref={bottomRef} />
       </div>
 
       <form className="chat-input-row" onSubmit={handleSubmit}>
@@ -89,6 +97,28 @@ export function Chat() {
           Ask
         </button>
       </form>
+    </div>
+  );
+}
+
+function Sources({ sources }: { sources: QuerySource[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? sources : sources.slice(0, SOURCES_PREVIEW_COUNT);
+  const remaining = sources.length - visible.length;
+
+  return (
+    <div className="sources">
+      {visible.map((s) => (
+        <div className="source-chip" key={s.id} title={s.subject}>
+          <span className="source-from">{s.from}</span>
+          <span className="source-subject">{s.subject}</span>
+        </div>
+      ))}
+      {remaining > 0 && (
+        <button className="link-btn" onClick={() => setExpanded(true)}>
+          +{remaining} more
+        </button>
+      )}
     </div>
   );
 }
