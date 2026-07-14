@@ -71,6 +71,25 @@ def _incremental_sync(session: Session, client: GmailClient, state: SyncState) -
     return {"mode": "incremental", "messages_touched": len(touched_ids)}
 
 
+def refresh_message_bodies(
+    session: Session, client: GmailClient, limit: int = 500, since: datetime | None = None
+) -> dict:
+    """Re-fetches and re-parses body_text for already-synced messages. For
+    backfilling a body-extraction fix onto mail synced before the fix
+    existed — run_sync alone won't touch already-stored rows.
+    """
+    query = select(Message)
+    if since is not None:
+        query = query.where(Message.internal_date >= since)
+    rows = session.exec(query.order_by(Message.internal_date.desc()).limit(limit)).all()
+
+    for row in rows:
+        _upsert_message(session, client.get_message(row.id))
+    session.commit()
+
+    return {"refreshed": len(rows)}
+
+
 def _upsert_message(session: Session, parsed: ParsedMessage) -> None:
     existing = session.get(Message, parsed.id)
     row = existing or Message(id=parsed.id, thread_id=parsed.thread_id)

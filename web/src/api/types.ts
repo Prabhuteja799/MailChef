@@ -8,6 +8,11 @@ export interface MessageSummary {
   snippet: string;
 }
 
+export interface MessageDetail extends MessageSummary {
+  to: string;
+  body_text: string;
+}
+
 export interface QuerySource {
   id: string;
   from: string;

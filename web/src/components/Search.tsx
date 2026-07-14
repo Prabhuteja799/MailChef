@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import { runAction } from "../api/actions";
 import { ApiError, api } from "../api/client";
-import type { Category, MessageSummary, ProposeResponse } from "../api/types";
+import type { Category, MessageDetail, MessageSummary, ProposeResponse } from "../api/types";
 import { ConfirmActionModal } from "./ConfirmActionModal";
+import { EmailDetailModal } from "./EmailDetailModal";
 
 const PAGE_SIZE = 50;
 
@@ -21,6 +22,8 @@ export function Search() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [openMessage, setOpenMessage] = useState<MessageDetail | null>(null);
 
   const [pendingProposal, setPendingProposal] = useState<ProposeResponse | null>(null);
   const [confirmResolver, setConfirmResolver] = useState<((v: boolean) => void) | null>(null);
@@ -96,6 +99,27 @@ export function Search() {
     });
   }
 
+  function patchLocalUnread(id: string, unread: boolean) {
+    setResults((prev) => (prev ? prev.map((m) => (m.id === id ? { ...m, unread } : m)) : prev));
+  }
+
+  async function openEmail(id: string) {
+    setError(null);
+    try {
+      const detail = await api.getMessage(id);
+      setOpenMessage(detail);
+      if (detail.unread) {
+        // Matches Gmail: opening an email marks it read. Single explicit id
+        // is always a safe, immediate action — no confirmation needed.
+        await api.actionsExecute({ action: "mark_read", message_ids: [id] });
+        setOpenMessage((prev) => (prev && prev.id === id ? { ...prev, unread: false } : prev));
+        patchLocalUnread(id, false);
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to open email.");
+    }
+  }
+
   function confirmViaModal(proposal: ProposeResponse): Promise<boolean> {
     return new Promise((resolve) => {
       setPendingProposal(proposal);
@@ -118,6 +142,13 @@ export function Search() {
         { action, message_ids: ids },
         { alwaysConfirm: action === "archive" || action === "trash", confirm: confirmViaModal }
       );
+      if (action === "archive" || action === "trash") {
+        setOpenMessage(null); // the email is no longer in this list — nothing to keep showing
+      } else if (openMessage && ids.includes(openMessage.id)) {
+        setOpenMessage((prev) =>
+          prev ? { ...prev, unread: action === "mark_unread" } : prev
+        );
+      }
       await fetchResults();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Action failed.");
@@ -192,8 +223,8 @@ export function Search() {
             </thead>
             <tbody>
               {results.map((m) => (
-                <tr key={m.id} className={m.unread ? "unread" : ""}>
-                  <td>
+                <tr key={m.id} className={m.unread ? "unread" : ""} onClick={() => openEmail(m.id)}>
+                  <td onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggleSelected(m.id)} />
                   </td>
                   <td className="cell-from">{m.from}</td>
@@ -202,7 +233,7 @@ export function Search() {
                   </td>
                   <td className="cell-date muted">{m.date ? m.date.slice(0, 10) : ""}</td>
                   <td>{m.category && <span className="category-pill">{m.category}</span>}</td>
-                  <td className="cell-actions">
+                  <td className="cell-actions" onClick={(e) => e.stopPropagation()}>
                     {m.unread ? (
                       <button className="link-btn" onClick={() => doAction("mark_read", [m.id])}>
                         Mark read
@@ -235,6 +266,14 @@ export function Search() {
             </div>
           )}
         </>
+      )}
+
+      {openMessage && (
+        <EmailDetailModal
+          message={openMessage}
+          onClose={() => setOpenMessage(null)}
+          onAction={(action) => doAction(action, [openMessage.id])}
+        />
       )}
 
       {pendingProposal && (

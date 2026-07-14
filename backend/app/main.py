@@ -34,7 +34,7 @@ from app.digest.generator import digest_to_dict
 from app.digest.pipeline import run_full_pipeline
 from app.digest.scheduler import start_scheduler, stop_scheduler
 from app.gmail.client import GmailClient
-from app.gmail.sync import run_sync
+from app.gmail.sync import refresh_message_bodies, run_sync
 from app.jobs.extractor import extract_job_events
 from app.llm import get_openai_client
 from app.query.answer import answer_question
@@ -124,6 +124,21 @@ def sync_run(session: Session = Depends(get_session)) -> dict:
     return run_sync(session, client)
 
 
+@app.post("/messages/refresh-bodies", dependencies=[Depends(require_api_token)])
+def messages_refresh_bodies(
+    limit: int = Query(default=500, le=2000),
+    since_days: int | None = Query(default=None, description="Only refresh mail from the last N days."),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Re-fetches body_text for already-synced mail — for backfilling a
+    body-extraction fix onto messages synced before the fix existed. Call
+    repeatedly (it processes most-recent-first) until `refreshed` < limit.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=since_days) if since_days else None
+    client = _require_gmail_client(session)
+    return refresh_message_bodies(session, client, limit=limit, since=since)
+
+
 @app.get("/messages", dependencies=[Depends(require_api_token)])
 def list_messages(
     limit: int = Query(default=50, le=200),
@@ -155,6 +170,21 @@ def list_messages(
         query.order_by(Message.internal_date.desc()).offset(offset).limit(limit)
     ).all()
     return [_message_summary(m) for m in rows]
+
+
+@app.get("/messages/{message_id}", dependencies=[Depends(require_api_token)])
+def get_message(message_id: str, session: Session = Depends(get_session)) -> dict:
+    """Full email content — the summary list only carries a short snippet,
+    this is what backs an "open this email" reading view.
+    """
+    m = session.get(Message, message_id)
+    if m is None:
+        raise HTTPException(404, "No such message")
+    return {
+        **_message_summary(m),
+        "to": m.to_recipients,
+        "body_text": m.body_text,
+    }
 
 
 # --- Stage (b): classification + retrieval ---

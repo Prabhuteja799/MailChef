@@ -3,12 +3,49 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parseaddr
+from html import unescape
+from html.parser import HTMLParser
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"[ \t]+")
+
+# Marketing/ATS email HTML is often malformed (unclosed tags, MSO conditional
+# comments, deeply nested tables) — regex tag-stripping can't reliably tell
+# "inside a <style> block" from "inside the message", which is exactly what
+# leaked raw CSS into extracted bodies before. A real parser handles this
+# properly regardless of how messy the markup is.
+_SKIP_TAGS = {"style", "script", "head"}
+_BLOCK_TAGS = {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table"}
+
+
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._skip_depth = 0
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _SKIP_TAGS:
+            self._skip_depth += 1
+        elif tag in _BLOCK_TAGS:
+            self._chunks.append("\n")
+
+    def handle_startendtag(self, tag, attrs):
+        if tag in _BLOCK_TAGS:
+            self._chunks.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in _SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data):
+        if self._skip_depth == 0:
+            self._chunks.append(data)
+
+    def text(self) -> str:
+        return "".join(self._chunks)
 
 
 @dataclass
@@ -120,9 +157,25 @@ def _extract_body_text(payload: dict) -> str:
     if plain:
         return plain
     if html:
-        stripped = _HTML_TAG_RE.sub(" ", html)
-        return _WHITESPACE_RE.sub(" ", stripped).strip()
+        return _html_to_text(html)
     return ""
+
+
+def _html_to_text(html: str) -> str:
+    extractor = _HTMLTextExtractor()
+    try:
+        extractor.feed(html)
+    except Exception:
+        # Malformed enough to choke the parser — fall back to whatever was
+        # extracted before the failure rather than losing the message.
+        pass
+    unescaped = unescape(extractor.text())
+
+    # Tag-stripped email templates leave many near-empty lines (one per
+    # empty table cell/div) — collapse per-line whitespace and drop blanks
+    # rather than just capping consecutive blank lines.
+    lines = (_WHITESPACE_RE.sub(" ", line).strip() for line in unescaped.splitlines())
+    return "\n".join(line for line in lines if line).strip()
 
 
 def _find_body_parts(payload: dict) -> tuple[str | None, str | None]:

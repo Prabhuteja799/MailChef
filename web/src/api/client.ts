@@ -7,6 +7,7 @@ import type {
   JobApplication,
   JobApplicationDetail,
   Label,
+  MessageDetail,
   MessageSummary,
   ProposeResponse,
   QueryResponse,
@@ -63,6 +64,7 @@ export const api = {
 
   listMessages: (params: BrowseParams) =>
     request<MessageSummary[]>(`/messages${qs(params as unknown as Record<string, string | number | boolean | undefined>)}`),
+  getMessage: (id: string) => request<MessageDetail>(`/messages/${id}`),
 
   categories: () => request<Category[]>("/categories"),
   labels: () => request<Label[]>("/labels"),

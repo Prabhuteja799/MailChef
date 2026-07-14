@@ -585,6 +585,19 @@ select {
   border-bottom: none;
 }
 
+.results-table tbody tr {
+  cursor: pointer;
+}
+
+.results-table tbody tr:hover {
+  background: var(--bg);
+}
+
+.results-table tr.unread:hover {
+  background: var(--unread-bg);
+  filter: brightness(0.97);
+}
+
 .cell-from {
   max-width: 200px;
   overflow: hidden;
@@ -672,6 +685,50 @@ select {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+}
+
+/* --- Email detail modal --- */
+
+.email-modal {
+  width: 680px;
+  max-width: 92vw;
+  max-height: 85vh;
+}
+
+.email-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.email-modal-header h3 {
+  margin: 0;
+  text-transform: none;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.email-modal-meta {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 12px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.email-modal-actions {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 12px;
+}
+
+.email-modal-body {
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+  padding-top: 4px;
 }
 
 /* --- Jobs --- */
