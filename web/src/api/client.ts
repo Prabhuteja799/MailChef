@@ -1,6 +1,7 @@
 import { loadConfig } from "./config";
 import type {
   ActionResult,
+  BrowseParams,
   Category,
   DigestResponse,
   JobApplication,
@@ -59,6 +60,9 @@ export const api = {
 
   search: (params: SearchParams) =>
     request<MessageSummary[]>(`/search${qs(params as unknown as Record<string, string | number | boolean | undefined>)}`),
+
+  listMessages: (params: BrowseParams) =>
+    request<MessageSummary[]>(`/messages${qs(params as unknown as Record<string, string | number | boolean | undefined>)}`),
 
   categories: () => request<Category[]>("/categories"),
   labels: () => request<Label[]>("/labels"),

@@ -71,6 +71,16 @@ export interface SearchParams {
   limit?: number;
 }
 
+export interface BrowseParams {
+  category?: string;
+  sender?: string;
+  after?: string;
+  before?: string;
+  unread_only?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
 export type JobStatus =
   | "applied"
   | "acknowledged"

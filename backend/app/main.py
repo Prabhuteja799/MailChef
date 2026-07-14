@@ -125,14 +125,33 @@ def sync_run(session: Session = Depends(get_session)) -> dict:
 
 @app.get("/messages", dependencies=[Depends(require_api_token)])
 def list_messages(
-    limit: int = Query(default=20, le=200),
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+    category: str | None = None,
+    sender: str | None = None,
+    after: str | None = None,
+    before: str | None = None,
+    unread_only: bool = False,
     session: Session = Depends(get_session),
 ) -> list[dict]:
-    """Sanity-check endpoint for stage (a): confirms sync actually populated
-    local storage. Superseded by real query/retrieval endpoints in stage (c).
+    """Browse mail sorted by date (most recent first), optionally filtered —
+    this is the "just show me my inbox, like Gmail" view, as opposed to
+    /search which is relevance-ranked and requires a query.
     """
+    query = select(Message)
+    if category:
+        query = query.where(Message.category == category)
+    if sender:
+        query = query.where(Message.sender_email.contains(sender))
+    if after:
+        query = query.where(Message.internal_date >= date_parser.parse(after))
+    if before:
+        query = query.where(Message.internal_date <= date_parser.parse(before))
+    if unread_only:
+        query = query.where(Message.is_unread == True)  # noqa: E712
+
     rows = session.exec(
-        select(Message).order_by(Message.internal_date.desc()).limit(limit)
+        query.order_by(Message.internal_date.desc()).offset(offset).limit(limit)
     ).all()
     return [_message_summary(m) for m in rows]
 

@@ -4,6 +4,8 @@ import { ApiError, api } from "../api/client";
 import type { Category, MessageSummary, ProposeResponse } from "../api/types";
 import { ConfirmActionModal } from "./ConfirmActionModal";
 
+const PAGE_SIZE = 50;
+
 export function Search() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -16,36 +18,72 @@ export function Search() {
   const [results, setResults] = useState<MessageSummary[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [pendingProposal, setPendingProposal] = useState<ProposeResponse | null>(null);
   const [confirmResolver, setConfirmResolver] = useState<((v: boolean) => void) | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
 
+  const browsing = !query.trim();
+
   useEffect(() => {
     api.categories().then(setCategories).catch(() => undefined);
+    // Open the tab showing recent mail, like an inbox — not an empty screen
+    // waiting for a query.
+    fetchResults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function runSearch(e?: FormEvent) {
+  async function fetchResults(e?: FormEvent) {
     e?.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      const rows = await api.search({
-        q: query || "*",
+      const filters = {
         category: category || undefined,
         sender: sender || undefined,
         after: after || undefined,
         before: before || undefined,
         unread_only: unreadOnly,
-        limit: 50,
-      });
+      };
+      let rows: MessageSummary[];
+      if (browsing) {
+        rows = await api.listMessages({ ...filters, limit: PAGE_SIZE, offset: 0 });
+        setHasMore(rows.length === PAGE_SIZE);
+      } else {
+        rows = await api.search({ ...filters, q: query, limit: PAGE_SIZE });
+        setHasMore(false); // relevance-ranked results aren't meaningfully paginated
+      }
       setResults(rows);
       setSelected(new Set());
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Search failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMore() {
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const rows = await api.listMessages({
+        category: category || undefined,
+        sender: sender || undefined,
+        after: after || undefined,
+        before: before || undefined,
+        unread_only: unreadOnly,
+        limit: PAGE_SIZE,
+        offset: results?.length ?? 0,
+      });
+      setResults((prev) => [...(prev ?? []), ...rows]);
+      setHasMore(rows.length === PAGE_SIZE);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load more.");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -80,7 +118,7 @@ export function Search() {
         { action, message_ids: ids },
         { alwaysConfirm: action === "archive" || action === "trash", confirm: confirmViaModal }
       );
-      await runSearch();
+      await fetchResults();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Action failed.");
     } finally {
@@ -94,12 +132,12 @@ export function Search() {
 
   return (
     <div className="search-view">
-      <form className="search-filters" onSubmit={runSearch}>
+      <form className="search-filters" onSubmit={fetchResults}>
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search your inbox (semantic + keyword)..."
+          placeholder="Search your inbox, or leave empty to browse recent mail..."
           className="search-query"
         />
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -118,7 +156,7 @@ export function Search() {
           Unread only
         </label>
         <button type="submit" disabled={loading}>
-          {loading ? "Searching…" : "Search"}
+          {loading ? "Loading…" : browsing ? "Refresh" : "Search"}
         </button>
       </form>
 
@@ -135,56 +173,68 @@ export function Search() {
         </div>
       )}
 
-      {results && results.length === 0 && <div className="empty-state">No matching emails.</div>}
+      {results && results.length === 0 && (
+        <div className="empty-state">{browsing ? "No mail matches these filters." : "No matching emails."}</div>
+      )}
 
       {results && results.length > 0 && (
-        <table className="results-table">
-          <thead>
-            <tr>
-              <th />
-              <th>From</th>
-              <th>Subject</th>
-              <th>Date</th>
-              <th>Category</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((m) => (
-              <tr key={m.id} className={m.unread ? "unread" : ""}>
-                <td>
-                  <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggleSelected(m.id)} />
-                </td>
-                <td className="cell-from">{m.from}</td>
-                <td className="cell-subject" title={m.snippet}>
-                  {m.subject}
-                </td>
-                <td className="cell-date muted">{m.date ? m.date.slice(0, 10) : ""}</td>
-                <td>{m.category && <span className="category-pill">{m.category}</span>}</td>
-                <td className="cell-actions">
-                  {m.unread ? (
-                    <button className="link-btn" onClick={() => doAction("mark_read", [m.id])}>
-                      Mark read
-                    </button>
-                  ) : (
-                    <button className="link-btn" onClick={() => doAction("mark_unread", [m.id])}>
-                      Mark unread
-                    </button>
-                  )}
-                  <button className="link-btn" onClick={() => doAction("star", [m.id])}>
-                    Star
-                  </button>
-                  <button className="link-btn" onClick={() => doAction("archive", [m.id])}>
-                    Archive
-                  </button>
-                  <button className="link-btn danger" onClick={() => doAction("trash", [m.id])}>
-                    Trash
-                  </button>
-                </td>
+        <>
+          <table className="results-table">
+            <thead>
+              <tr>
+                <th />
+                <th>From</th>
+                <th>Subject</th>
+                <th>Date</th>
+                <th>Category</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {results.map((m) => (
+                <tr key={m.id} className={m.unread ? "unread" : ""}>
+                  <td>
+                    <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggleSelected(m.id)} />
+                  </td>
+                  <td className="cell-from">{m.from}</td>
+                  <td className="cell-subject" title={m.snippet}>
+                    {m.subject}
+                  </td>
+                  <td className="cell-date muted">{m.date ? m.date.slice(0, 10) : ""}</td>
+                  <td>{m.category && <span className="category-pill">{m.category}</span>}</td>
+                  <td className="cell-actions">
+                    {m.unread ? (
+                      <button className="link-btn" onClick={() => doAction("mark_read", [m.id])}>
+                        Mark read
+                      </button>
+                    ) : (
+                      <button className="link-btn" onClick={() => doAction("mark_unread", [m.id])}>
+                        Mark unread
+                      </button>
+                    )}
+                    <button className="link-btn" onClick={() => doAction("star", [m.id])}>
+                      Star
+                    </button>
+                    <button className="link-btn" onClick={() => doAction("archive", [m.id])}>
+                      Archive
+                    </button>
+                    <button className="link-btn danger" onClick={() => doAction("trash", [m.id])}>
+                      Trash
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {browsing && hasMore && (
+            <div style={{ textAlign: "center", marginTop: 14 }}>
+              <button className="secondary" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {pendingProposal && (
