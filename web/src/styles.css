@@ -11,6 +11,17 @@
   --unread-bg: #eef2ff;
   --radius: 10px;
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  --status-interview: #2563eb;
+  --status-interview-bg: #dbeafe;
+  --status-moving-forward: #b45309;
+  --status-moving-forward-bg: #fef3c7;
+  --status-offer: #15803d;
+  --status-offer-bg: #dcfce7;
+  --status-rejected: #6b7280;
+  --status-rejected-bg: #f1f1f3;
+  --status-neutral: #52525b;
+  --status-neutral-bg: #f1f1f3;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,6 +37,17 @@
     --danger-hover: #fca5a5;
     --unread-bg: #23233a;
     --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    --status-interview: #60a5fa;
+    --status-interview-bg: #1e3a5f;
+    --status-moving-forward: #fbbf24;
+    --status-moving-forward-bg: #4a3a0f;
+    --status-offer: #4ade80;
+    --status-offer-bg: #143d24;
+    --status-rejected: #9a9aa2;
+    --status-rejected-bg: #2a2a30;
+    --status-neutral: #b0b0b8;
+    --status-neutral-bg: #2a2a30;
   }
 }
 
@@ -534,54 +556,204 @@ select {
   margin: 0;
 }
 
-.jobs-board {
-  display: flex;
-  gap: 14px;
-  overflow-x: auto;
-  padding-bottom: 8px;
+/* Status badges — shared between the highlight cards and the table */
+
+.status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
-.jobs-column {
-  flex: 0 0 220px;
+.status-badge.status-interview {
+  color: var(--status-interview);
+  background: var(--status-interview-bg);
+}
+
+.status-badge.status-moving-forward {
+  color: var(--status-moving-forward);
+  background: var(--status-moving-forward-bg);
+}
+
+.status-badge.status-offer {
+  color: var(--status-offer);
+  background: var(--status-offer-bg);
+}
+
+.status-badge.status-rejected {
+  color: var(--status-rejected);
+  background: var(--status-rejected-bg);
+}
+
+.status-badge.status-neutral {
+  color: var(--status-neutral);
+  background: var(--status-neutral-bg);
+}
+
+/* Highlights: interview / moving forward / offer — the reason this
+   feature exists, so it always renders above the noisy bulk list. */
+
+.jobs-highlights {
+  margin-bottom: 20px;
+}
+
+.jobs-highlights-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.jobs-highlights-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.highlight-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.jobs-column-header {
-  font-size: 13px;
-  font-weight: 700;
-  padding: 4px 2px;
-}
-
-.job-card {
-  display: block;
-  width: 100%;
+  align-items: flex-start;
+  gap: 4px;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--status-neutral);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 12px 16px;
   color: var(--text);
+  min-width: 200px;
+  box-shadow: var(--shadow);
 }
 
-.job-card:hover {
+.highlight-card.status-interview {
+  border-left-color: var(--status-interview);
+}
+
+.highlight-card.status-moving-forward {
+  border-left-color: var(--status-moving-forward);
+}
+
+.highlight-card.status-offer {
+  border-left-color: var(--status-offer);
+}
+
+.highlight-card:hover {
   border-color: var(--accent);
-  background: var(--surface);
+  border-left-width: 4px;
 }
 
-.job-card-company {
-  font-weight: 600;
+.highlight-card-company {
+  font-weight: 700;
+  font-size: 15px;
+  margin-top: 4px;
+}
+
+.highlight-card-role {
   font-size: 13px;
+  color: var(--text-muted);
 }
 
-.job-card-role {
-  font-size: 12px;
-  color: var(--text-muted);
+.highlight-card-date {
+  font-size: 11px;
   margin-top: 2px;
 }
 
-.job-card-date {
-  font-size: 11px;
-  margin-top: 6px;
+/* Filter/search toolbar + the bulk table */
+
+.jobs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.jobs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.chip:hover:not(.active) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.jobs-search-input {
+  min-width: 220px;
+}
+
+.jobs-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.jobs-table th {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.jobs-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.jobs-table tr:last-child td {
+  border-bottom: none;
+}
+
+.jobs-table tbody tr {
+  cursor: pointer;
+}
+
+.jobs-table tbody tr:hover {
+  background: var(--bg);
+}
+
+.cell-company {
+  font-weight: 600;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-role {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

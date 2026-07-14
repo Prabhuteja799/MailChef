@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../api/client";
 import type { JobApplication, JobApplicationDetail, JobStatus } from "../api/types";
 
 const STATUS_ORDER: JobStatus[] = ["interview", "moving_forward", "offer", "applied", "acknowledged", "rejected", "other"];
+
+// Anything at this tier is why the tracker exists — always shown up top,
+// regardless of how noisy the rest of the pipeline gets.
+const HIGHLIGHT_STATUSES: JobStatus[] = ["interview", "moving_forward", "offer"];
 
 const STATUS_LABELS: Record<JobStatus, string> = {
   applied: "Applied",
@@ -14,12 +18,24 @@ const STATUS_LABELS: Record<JobStatus, string> = {
   other: "Other",
 };
 
+const STATUS_CLASS: Record<JobStatus, string> = {
+  applied: "status-neutral",
+  acknowledged: "status-neutral",
+  interview: "status-interview",
+  moving_forward: "status-moving-forward",
+  offer: "status-offer",
+  rejected: "status-rejected",
+  other: "status-neutral",
+};
+
 export function Jobs() {
   const [applications, setApplications] = useState<JobApplication[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<JobApplicationDetail | null>(null);
+  const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
+  const [companyFilter, setCompanyFilter] = useState("");
 
   useEffect(() => {
     loadApplications();
@@ -59,15 +75,36 @@ export function Jobs() {
     }
   }
 
-  const grouped: Partial<Record<JobStatus, JobApplication[]>> = {};
-  for (const a of applications ?? []) {
-    (grouped[a.status] ??= []).push(a);
-  }
+  const counts = useMemo(() => {
+    const c: Partial<Record<JobStatus, number>> = {};
+    for (const a of applications ?? []) c[a.status] = (c[a.status] ?? 0) + 1;
+    return c;
+  }, [applications]);
+
+  const highlights = useMemo(
+    () => (applications ?? []).filter((a) => HIGHLIGHT_STATUSES.includes(a.status)),
+    [applications]
+  );
+
+  const filtered = useMemo(() => {
+    let rows = applications ?? [];
+    if (statusFilter !== "all") rows = rows.filter((a) => a.status === statusFilter);
+    if (companyFilter.trim()) {
+      const needle = companyFilter.trim().toLowerCase();
+      rows = rows.filter((a) => a.company.toLowerCase().includes(needle) || a.role?.toLowerCase().includes(needle));
+    }
+    return rows;
+  }, [applications, statusFilter, companyFilter]);
+
+  const total = applications?.length ?? 0;
 
   return (
     <div className="jobs-view">
       <div className="jobs-header">
-        <h2>Job search pipeline</h2>
+        <div>
+          <h2>Job search pipeline</h2>
+          {!loading && applications && <div className="muted">{total} application(s) tracked</div>}
+        </div>
         <button onClick={scanForUpdates} disabled={scanning}>
           {scanning ? "Scanning your inbox…" : "Scan for updates"}
         </button>
@@ -85,22 +122,78 @@ export function Jobs() {
       )}
 
       {!loading && applications && applications.length > 0 && (
-        <div className="jobs-board">
-          {STATUS_ORDER.filter((status) => grouped[status]?.length).map((status) => (
-            <div className="jobs-column" key={status}>
-              <div className="jobs-column-header">
-                {STATUS_LABELS[status]} <span className="muted">({grouped[status]!.length})</span>
+        <>
+          {highlights.length > 0 ? (
+            <div className="jobs-highlights">
+              <div className="jobs-highlights-label">Needs your attention</div>
+              <div className="jobs-highlights-row">
+                {highlights.map((a) => (
+                  <button className={`highlight-card ${STATUS_CLASS[a.status]}`} key={a.id} onClick={() => openDetail(a.id)}>
+                    <span className={`status-badge ${STATUS_CLASS[a.status]}`}>{STATUS_LABELS[a.status]}</span>
+                    <div className="highlight-card-company">{a.company}</div>
+                    {a.role && <div className="highlight-card-role">{a.role}</div>}
+                    <div className="highlight-card-date muted">{a.status_updated_at.slice(0, 10)}</div>
+                  </button>
+                ))}
               </div>
-              {grouped[status]!.map((a) => (
-                <button className="job-card" key={a.id} onClick={() => openDetail(a.id)}>
-                  <div className="job-card-company">{a.company}</div>
-                  {a.role && <div className="job-card-role">{a.role}</div>}
-                  <div className="job-card-date muted">{a.status_updated_at.slice(0, 10)}</div>
+            </div>
+          ) : (
+            <div className="empty-state" style={{ padding: "16px 0" }}>
+              No interviews, offers, or "moving forward" replies yet — they'll show up here first.
+            </div>
+          )}
+
+          <div className="jobs-toolbar">
+            <div className="jobs-chips">
+              <button className={statusFilter === "all" ? "chip active" : "chip"} onClick={() => setStatusFilter("all")}>
+                All ({total})
+              </button>
+              {STATUS_ORDER.filter((s) => counts[s]).map((status) => (
+                <button
+                  key={status}
+                  className={statusFilter === status ? "chip active" : "chip"}
+                  onClick={() => setStatusFilter(status)}
+                >
+                  {STATUS_LABELS[status]} ({counts[status]})
                 </button>
               ))}
             </div>
-          ))}
-        </div>
+            <input
+              type="text"
+              placeholder="Filter by company or role..."
+              value={companyFilter}
+              onChange={(e) => setCompanyFilter(e.target.value)}
+              className="jobs-search-input"
+            />
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="empty-state">No applications match this filter.</div>
+          ) : (
+            <table className="jobs-table">
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((a) => (
+                  <tr key={a.id} onClick={() => openDetail(a.id)}>
+                    <td className="cell-company">{a.company}</td>
+                    <td className="muted cell-role">{a.role || "—"}</td>
+                    <td>
+                      <span className={`status-badge ${STATUS_CLASS[a.status]}`}>{STATUS_LABELS[a.status]}</span>
+                    </td>
+                    <td className="muted">{a.status_updated_at.slice(0, 10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
       )}
 
       {selected && (
@@ -111,7 +204,8 @@ export function Jobs() {
               {selected.role ? ` — ${selected.role}` : ""}
             </h3>
             <div className="muted" style={{ marginBottom: 12 }}>
-              Status: {STATUS_LABELS[selected.status]} (updated {selected.status_updated_at.slice(0, 10)})
+              <span className={`status-badge ${STATUS_CLASS[selected.status]}`}>{STATUS_LABELS[selected.status]}</span>
+              {" · updated " + selected.status_updated_at.slice(0, 10)}
             </div>
             <div className="modal-list">
               {selected.events.map((e) => (
