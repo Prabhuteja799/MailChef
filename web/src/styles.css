@@ -646,6 +646,7 @@ select {
   width: 520px;
   max-width: 90vw;
   max-height: 80vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -724,6 +725,12 @@ select {
 }
 
 .email-modal-body {
+  /* Without flex + min-height:0, a flex child's default min-height:auto lets
+     its content dictate the container's size instead of scrolling inside
+     it — the classic flexbox-overflow gotcha, and a plausible source of a
+     modal that looks like it has a huge blank gap. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   white-space: pre-wrap;
   font-size: 14px;
