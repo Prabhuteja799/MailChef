@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 from app.classification.categories import UNCATEGORIZED
 from app.config import settings
 from app.db.models import Digest, Message
+from app.jobs.summary import render_job_pipeline_section
 from app.llm import INJECTION_GUARD
 
 MAX_EMAILS_PER_CATEGORY = 15
@@ -65,8 +66,14 @@ def generate_digest(session: Session, client: OpenAI) -> Digest:
         select(Message).where(Message.is_unread == True).order_by(Message.internal_date.desc())  # noqa: E712
     ).all()
 
+    # A DB query, not an LLM call — cheap enough to always include, and
+    # meaningful even on an empty inbox (rejections/interviews don't
+    # require the email to still be unread).
+    job_section = render_job_pipeline_section(session)
+
     if not unread:
-        return _save_digest(session, "# MailChef Morning Digest\n\nNo unread mail — inbox zero.", 0, {})
+        markdown = "# MailChef Morning Digest\n\nNo unread mail — inbox zero." + job_section
+        return _save_digest(session, markdown, 0, {})
 
     grouped: dict[str, list[Message]] = defaultdict(list)
     for m in unread:
@@ -74,7 +81,7 @@ def generate_digest(session: Session, client: OpenAI) -> Digest:
     category_counts = {cat: len(msgs) for cat, msgs in grouped.items()}
 
     parsed = _summarize_with_llm(client, grouped)
-    markdown = _render_markdown(len(unread), category_counts, parsed)
+    markdown = _render_markdown(len(unread), category_counts, parsed) + job_section
     return _save_digest(session, markdown, len(unread), category_counts)
 
 

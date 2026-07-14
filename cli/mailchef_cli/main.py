@@ -63,7 +63,7 @@ def chat() -> None:
     client = _client()
     console.print(
         "[bold]MailChef[/bold] — ask about your inbox in plain text, or use "
-        "/digest, /search <q>, /sync, /archive <q>, /trash <q>, /mark-read <q>, "
+        "/digest, /search <q>, /jobs, /sync, /archive <q>, /trash <q>, /mark-read <q>, "
         "/star <q>, /exit.\n"
     )
     while True:
@@ -95,6 +95,8 @@ def _handle_chat_line(client: MailChefClient, line: str) -> None:
         _print_digest(client.get("/digest/latest"))
     elif cmd == "/sync":
         console.print(client.post("/sync/run"))
+    elif cmd == "/jobs":
+        _print_jobs_table(client.get("/jobs"))
     elif cmd == "/search":
         _print_search(client.get("/search", {"q": rest, "limit": 20}))
     elif cmd in ("/archive", "/trash", "/mark-read", "/mark-unread", "/star", "/unstar"):
@@ -105,7 +107,7 @@ def _handle_chat_line(client: MailChefClient, line: str) -> None:
         )
     else:
         console.print(
-            "[yellow]Unknown command. Try /digest, /search <q>, /archive <q>, "
+            "[yellow]Unknown command. Try /digest, /search <q>, /jobs, /archive <q>, "
             "/trash <q>, /mark-read <q>, /star <q>, /sync, /exit[/yellow]"
         )
 
@@ -254,6 +256,72 @@ app.command(name="label-add", help="Add a label. Single id runs immediately; bul
 app.command(name="label-remove", help="Remove a label. Single id runs immediately; bulk/search asks first.")(
     _label_action_command("remove_label")
 )
+
+
+jobs_app = typer.Typer(help="Track job applications extracted from your inbox.")
+app.add_typer(jobs_app, name="jobs")
+
+
+@jobs_app.callback(invoke_without_command=True)
+@_guard
+def jobs_default(ctx: typer.Context) -> None:
+    """List tracked job applications (default when no subcommand is given)."""
+    if ctx.invoked_subcommand is not None:
+        return
+    client = _client()
+    _print_jobs_table(client.get("/jobs"))
+
+
+@jobs_app.command(name="extract")
+@_guard
+def jobs_extract_cmd(
+    since_days: Optional[int] = typer.Option(None, "--since-days", help="Only scan mail from the last N days."),
+) -> None:
+    """Scan mail for job-application events (new interviews, replies, rejections) and update tracked applications."""
+    client = _client()
+    path = "/jobs/extract" + (f"?since_days={since_days}" if since_days else "")
+    with console.status("Scanning mail for job application events..."):
+        result = client.post(path)
+    console.print(result)
+
+
+@jobs_app.command(name="show")
+@_guard
+def jobs_show_cmd(application_id: str) -> None:
+    """Show the full email timeline for one tracked application (id from `mailchef jobs`)."""
+    client = _client()
+    detail = client.get(f"/jobs/{application_id}")
+    console.print(f"\n[bold]{detail['company']}[/bold] — {detail.get('role') or 'role unknown'}")
+    console.print(
+        f"Status: {detail['status'].replace('_', ' ').title()} "
+        f"(updated {detail['status_updated_at'][:10]})\n"
+    )
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Date")
+    table.add_column("Event")
+    table.add_column("Summary")
+    for e in detail["events"]:
+        table.add_row(e["event_date"][:10], e["event_type"].replace("_", " ").title(), e["summary"])
+    console.print(table)
+
+
+def _print_jobs_table(rows: list[dict]) -> None:
+    if not rows:
+        console.print("[yellow]No tracked applications yet — run `mailchef jobs extract` first.[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("ID")
+    table.add_column("Company")
+    table.add_column("Role")
+    table.add_column("Status")
+    table.add_column("Updated")
+    table.add_column("Events")
+    for r in rows:
+        table.add_row(
+            r["id"], r["company"], r.get("role") or "", r["status"].replace("_", " ").title(),
+            (r.get("status_updated_at") or "")[:10], str(r.get("event_count", "")),
+        )
+    console.print(table)
 
 
 def _print_answer(result: dict) -> None:

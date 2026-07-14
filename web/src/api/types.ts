@@ -70,3 +70,33 @@ export interface SearchParams {
   unread_only?: boolean;
   limit?: number;
 }
+
+export type JobStatus =
+  | "applied"
+  | "acknowledged"
+  | "interview"
+  | "moving_forward"
+  | "offer"
+  | "rejected"
+  | "other";
+
+export interface JobApplication {
+  id: string;
+  company: string;
+  role: string | null;
+  status: JobStatus;
+  status_updated_at: string;
+  event_count: number;
+}
+
+export interface JobApplicationEvent {
+  id: string;
+  event_type: JobStatus;
+  event_date: string;
+  summary: string;
+  source_message: MessageSummary | null;
+}
+
+export interface JobApplicationDetail extends JobApplication {
+  events: JobApplicationEvent[];
+}

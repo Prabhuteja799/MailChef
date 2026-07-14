@@ -39,6 +39,7 @@ class Message(SQLModel, table=True):
     is_unread: bool = False
     category: str | None = None  # filled in by the classifier (stage b)
     indexed_at: datetime | None = None  # set once embedded into the vector store
+    job_extracted_at: datetime | None = None  # set once scanned for job-application events
     updated_at: datetime = Field(default_factory=utcnow)
 
 
@@ -65,3 +66,31 @@ class Digest(SQLModel, table=True):
     content_markdown: str
     unread_count: int
     category_counts_json: str = "{}"
+
+
+class JobApplication(SQLModel, table=True):
+    """One tracked application, built up from matching job-related emails to
+    a company. company_key is a normalized (lowercased, suffix-stripped)
+    version of `company` used to match new events to an existing row —
+    best-effort entity resolution, not exact, since the same company shows
+    up under many display names across different senders/ATS platforms.
+    """
+
+    id: str = Field(primary_key=True)  # uuid4 hex
+    company: str
+    company_key: str = Field(index=True)
+    role: str | None = None
+    status: str  # applied | acknowledged | interview | moving_forward | offer | rejected
+    status_updated_at: datetime
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class JobApplicationEvent(SQLModel, table=True):
+    """A single email's contribution to an application's timeline."""
+
+    id: str = Field(primary_key=True)  # uuid4 hex
+    application_id: str = Field(foreign_key="jobapplication.id", index=True)
+    message_id: str = Field(foreign_key="message.id")
+    event_type: str  # applied | acknowledged | interview | moving_forward | offer | rejected | other
+    event_date: datetime
+    summary: str

@@ -10,6 +10,7 @@ from app.db.models import Digest
 from app.digest.generator import generate_digest
 from app.gmail.client import GmailClient
 from app.gmail.sync import run_sync
+from app.jobs.extractor import extract_job_events
 from app.retrieval.indexer import index_pending_messages
 
 
@@ -20,16 +21,18 @@ def run_full_pipeline(
     collection: Collection,
     since_days: int | None = None,
 ) -> dict:
-    """Sync -> classify -> index -> digest, in that order, so the digest
-    reflects the freshest inbox state. Used both by the scheduled job and
-    the on-demand /digest/run endpoint.
+    """Sync -> classify -> index -> extract job events -> digest, in that
+    order, so the digest reflects the freshest inbox state (including
+    freshly-detected interview/reply/rejection events). Used both by the
+    scheduled job and the on-demand /digest/run endpoint.
 
-    classify/index are scoped to the last `since_days` (defaulting to
-    settings.initial_sync_days) rather than the whole local archive — a full
-    Gmail backfill can leave thousands of older messages pending, and
-    reprocessing all of them on every digest run would be needlessly slow
-    and expensive. Older mail can still be classified/indexed explicitly via
-    /classify/run and /index/run with a larger or no since_days.
+    classify/index/job-extraction are scoped to the last `since_days`
+    (defaulting to settings.initial_sync_days) rather than the whole local
+    archive — a full Gmail backfill can leave thousands of older messages
+    pending, and reprocessing all of them on every digest run would be
+    needlessly slow and expensive. Older mail can still be processed
+    explicitly via /classify/run, /index/run, /jobs/extract with a larger or
+    no since_days.
     """
     days = since_days if since_days is not None else settings.initial_sync_days
     since = datetime.now(timezone.utc) - timedelta(days=days)
@@ -37,12 +40,14 @@ def run_full_pipeline(
     sync_result = run_sync(session, gmail_client)
     classify_result = classify_pending_messages(session, openai_client, since=since)
     index_result = index_pending_messages(session, collection, openai_client, since=since)
+    jobs_result = extract_job_events(session, openai_client, since=since)
     digest = generate_digest(session, openai_client)
 
     return {
         "sync": sync_result,
         "classify": classify_result,
         "index": index_result,
+        "jobs": jobs_result,
         "digest": _digest_summary(digest),
     }
 

@@ -3,6 +3,8 @@ import type {
   ActionResult,
   Category,
   DigestResponse,
+  JobApplication,
+  JobApplicationDetail,
   Label,
   MessageSummary,
   ProposeResponse,
@@ -77,4 +79,9 @@ export const api = {
     request<{ cancelled: boolean }>("/actions/cancel", { method: "POST", body: JSON.stringify({ proposal_id: proposalId }) }),
   actionsExecute: (body: Record<string, unknown>) =>
     request<ActionResult>("/actions/execute", { method: "POST", body: JSON.stringify(body) }),
+
+  jobsList: () => request<JobApplication[]>("/jobs"),
+  jobsDetail: (id: string) => request<JobApplicationDetail>(`/jobs/${id}`),
+  jobsExtract: (sinceDays?: number) =>
+    request<Record<string, unknown>>(`/jobs/extract${qs({ since_days: sinceDays })}`, { method: "POST" }),
 };

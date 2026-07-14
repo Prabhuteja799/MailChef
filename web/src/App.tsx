@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Chat } from "./components/Chat";
 import { Digest } from "./components/Digest";
+import { Jobs } from "./components/Jobs";
 import { Login } from "./components/Login";
 import { Search } from "./components/Search";
 import { clearConfig, loadConfig } from "./api/config";
 
-type Tab = "chat" | "digest" | "search";
+type Tab = "chat" | "digest" | "jobs" | "search";
 
 export default function App() {
   const [connected, setConnected] = useState(() => loadConfig() !== null);
@@ -30,6 +31,9 @@ export default function App() {
         <button className={tab === "digest" ? "nav-item active" : "nav-item"} onClick={() => setTab("digest")}>
           Digest
         </button>
+        <button className={tab === "jobs" ? "nav-item active" : "nav-item"} onClick={() => setTab("jobs")}>
+          Jobs
+        </button>
         <button className={tab === "search" ? "nav-item active" : "nav-item"} onClick={() => setTab("search")}>
           Search &amp; Inbox
         </button>
@@ -41,6 +45,7 @@ export default function App() {
       <main className="content">
         {tab === "chat" && <Chat />}
         {tab === "digest" && <Digest />}
+        {tab === "jobs" && <Jobs />}
         {tab === "search" && <Search />}
       </main>
     </div>

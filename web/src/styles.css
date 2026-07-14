@@ -514,3 +514,74 @@ select {
   gap: 10px;
   margin-top: 18px;
 }
+
+/* --- Jobs --- */
+
+.jobs-view {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.jobs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.jobs-header h2 {
+  margin: 0;
+}
+
+.jobs-board {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.jobs-column {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jobs-column-header {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 2px;
+}
+
+.job-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+}
+
+.job-card:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.job-card-company {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.job-card-role {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.job-card-date {
+  font-size: 11px;
+  margin-top: 6px;
+}

@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from pydantic import BaseModel
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from app.actions.service import (
     ActionError,
@@ -29,11 +29,12 @@ from app.auth.gmail_oauth import (
 from app.classification.categories import load_categories
 from app.classification.classifier import classify_pending_messages
 from app.db.database import create_db_and_tables, engine, get_session
-from app.db.models import Digest, Message
+from app.db.models import Digest, JobApplication, JobApplicationEvent, Message
 from app.digest.pipeline import run_full_pipeline
 from app.digest.scheduler import start_scheduler, stop_scheduler
 from app.gmail.client import GmailClient
 from app.gmail.sync import run_sync
+from app.jobs.extractor import extract_job_events
 from app.llm import get_openai_client
 from app.query.answer import answer_question
 from app.retrieval.fts import ensure_fts_table
@@ -332,6 +333,71 @@ def _digest_response(d: Digest) -> dict:
         "generated_at": d.generated_at.isoformat(),
         "unread_count": d.unread_count,
         "content_markdown": d.content_markdown,
+    }
+
+
+# --- Job application tracker ---
+
+
+@app.post("/jobs/extract", dependencies=[Depends(require_api_token)])
+def jobs_extract(
+    since_days: int | None = Query(default=None, description="Only scan mail from the last N days."),
+    session: Session = Depends(get_session),
+) -> dict:
+    since = datetime.now(timezone.utc) - timedelta(days=since_days) if since_days else None
+    return extract_job_events(session, get_openai_client(), since=since)
+
+
+@app.get("/jobs", dependencies=[Depends(require_api_token)])
+def jobs_list(session: Session = Depends(get_session)) -> list[dict]:
+    applications = session.exec(
+        select(JobApplication).order_by(JobApplication.status_updated_at.desc())
+    ).all()
+    return [_job_application_summary(session, a) for a in applications]
+
+
+@app.get("/jobs/{application_id}", dependencies=[Depends(require_api_token)])
+def jobs_detail(application_id: str, session: Session = Depends(get_session)) -> dict:
+    application = session.get(JobApplication, application_id)
+    if application is None:
+        raise HTTPException(404, "No such application")
+
+    events = session.exec(
+        select(JobApplicationEvent)
+        .where(JobApplicationEvent.application_id == application_id)
+        .order_by(JobApplicationEvent.event_date.desc())
+    ).all()
+
+    return {
+        **_job_application_summary(session, application),
+        "events": [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "event_date": e.event_date.isoformat(),
+                "summary": e.summary,
+                "source_message": _message_summary(session.get(Message, e.message_id))
+                if session.get(Message, e.message_id)
+                else None,
+            }
+            for e in events
+        ],
+    }
+
+
+def _job_application_summary(session: Session, a: JobApplication) -> dict:
+    event_count = session.exec(
+        select(func.count())
+        .select_from(JobApplicationEvent)
+        .where(JobApplicationEvent.application_id == a.id)
+    ).one()
+    return {
+        "id": a.id,
+        "company": a.company,
+        "role": a.role,
+        "status": a.status,
+        "status_updated_at": a.status_updated_at.isoformat(),
+        "event_count": event_count,
     }
 
 
