@@ -3,7 +3,7 @@ from datetime import datetime
 
 from chromadb.api.models.Collection import Collection
 from openai import OpenAI
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import settings
 from app.db.models import Message
@@ -20,6 +20,29 @@ class SearchFilters:
     after: datetime | None = None
     before: datetime | None = None
     unread_only: bool = False
+
+
+def list_by_filters(session: Session, filters: SearchFilters, limit: int = 50) -> list[Message]:
+    """Date-ordered, no semantic/keyword ranking involved — for "give me
+    everything from today" style requests. hybrid_search ranks by topical
+    relevance to a search string, which is the wrong tool for "list every
+    email in this window": a generic query like "report" or "summary" has
+    weak embedding signal, so genuinely in-range emails can easily miss a
+    fixed top-K relevance cut merely for not sounding enough like the query.
+    """
+    query = select(Message)
+    if filters.category:
+        query = query.where(Message.category == filters.category)
+    if filters.sender_contains:
+        query = query.where(Message.sender_email.contains(filters.sender_contains))
+    if filters.after:
+        query = query.where(Message.internal_date >= filters.after)
+    if filters.before:
+        query = query.where(Message.internal_date <= filters.before)
+    if filters.unread_only:
+        query = query.where(Message.is_unread == True)  # noqa: E712
+
+    return list(session.exec(query.order_by(Message.internal_date.desc()).limit(limit)).all())
 
 
 def hybrid_search(

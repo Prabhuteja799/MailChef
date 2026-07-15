@@ -17,6 +17,7 @@ NO_CATEGORY = "none"
 class UnderstoodQuery:
     search_terms: str
     filters: SearchFilters
+    is_listing_request: bool
 
 
 def extract_query_filters(client: OpenAI, question: str) -> UnderstoodQuery:
@@ -33,12 +34,19 @@ def extract_query_filters(client: OpenAI, question: str) -> UnderstoodQuery:
     system = (
         "You turn a natural-language question about someone's email inbox "
         f"into search parameters. Today is {now.date().isoformat()} "
-        f"({now.strftime('%A')}). Resolve relative dates (\"this week\", "
-        "\"today\", \"last month\") into absolute YYYY-MM-DD dates using that "
-        "as \"today\". Leave after_date/before_date empty (\"\") if the "
+        f"({now.strftime('%A')}), current time {now.strftime('%H:%M')}. "
+        "Resolve relative dates (\"this week\", \"today\", \"last month\", "
+        "\"last 48 hours\") into absolute YYYY-MM-DD dates using that as "
+        "\"today\". For hour-based windows (e.g. \"last 48 hours\"), round "
+        "after_date DOWN (earlier) by one extra day rather than under-covering "
+        "the window. Leave after_date/before_date empty (\"\") if the "
         "question has no date scope. Leave sender_hint empty if no specific "
         "person or company is named. Use category \"none\" unless the "
-        f"question clearly maps to one of these:\n{category_lines}"
+        f"question clearly maps to one of these:\n{category_lines}\n\n"
+        "Set is_listing_request true if the user wants a broad listing/report/"
+        "summary of matching emails (\"give me a report\", \"what did I get "
+        "today\", \"summarize this week\"), false for a specific factual "
+        "question (\"did X reply\", \"when is my interview\")."
     )
 
     schema = {
@@ -52,8 +60,11 @@ def extract_query_filters(client: OpenAI, question: str) -> UnderstoodQuery:
             "sender_hint": {"type": "string"},
             "after_date": {"type": "string"},
             "before_date": {"type": "string"},
+            "is_listing_request": {"type": "boolean"},
         },
-        "required": ["search_terms", "category", "sender_hint", "after_date", "before_date"],
+        "required": [
+            "search_terms", "category", "sender_hint", "after_date", "before_date", "is_listing_request",
+        ],
         "additionalProperties": False,
     }
 
@@ -77,7 +88,11 @@ def extract_query_filters(client: OpenAI, question: str) -> UnderstoodQuery:
         after=_safe_parse_date(parsed["after_date"]),
         before=_safe_parse_date(parsed["before_date"]),
     )
-    return UnderstoodQuery(search_terms=parsed["search_terms"] or question, filters=filters)
+    return UnderstoodQuery(
+        search_terms=parsed["search_terms"] or question,
+        filters=filters,
+        is_listing_request=parsed["is_listing_request"],
+    )
 
 
 def _safe_parse_date(value: str) -> datetime | None:
