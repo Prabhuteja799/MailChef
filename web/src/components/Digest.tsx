@@ -54,15 +54,23 @@ export function Digest() {
           )}
         </div>
         <button onClick={generateNow} disabled={generating}>
-          {generating ? "Syncing, classifying, and summarizing…" : "Generate now"}
+          {generating ? "Generating…" : "Generate now"}
         </button>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
 
+      {generating && (
+        <div className="generating-banner">
+          <span className="spinner" />
+          Syncing new mail, classifying, indexing, and scanning for job updates — this can take a
+          few minutes if there's a lot of new mail.
+        </div>
+      )}
+
       {loading && <div className="empty-state">Loading…</div>}
 
-      {!loading && !digest && !error && (
+      {!loading && !generating && !digest && !error && (
         <div className="empty-state">No digest yet — click "Generate now" to create one.</div>
       )}
 

@@ -106,11 +106,19 @@ export function Jobs() {
           {!loading && applications && <div className="muted">{total} application(s) tracked</div>}
         </div>
         <button onClick={scanForUpdates} disabled={scanning}>
-          {scanning ? "Scanning your inbox…" : "Scan for updates"}
+          {scanning ? "Scanning…" : "Scan for updates"}
         </button>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+
+      {scanning && (
+        <div className="generating-banner">
+          <span className="spinner" />
+          Scanning mail for interview invites, replies, and rejections — this can take a few
+          minutes for a lot of mail.
+        </div>
+      )}
 
       {loading && <div className="empty-state">Loading…</div>}
 
